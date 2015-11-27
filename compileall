@@ -1,0 +1,7 @@
+#!/bin/bash
+
+gcc -g -o otp_enc_d otp_enc_d.c
+gcc -g -o otp_enc otp_enc.c
+gcc -g -o otp_enc_d otp_enc_d.c
+gcc -g -o otp_enc otp_enc.c
+gcc -g -o keygen keygen.c

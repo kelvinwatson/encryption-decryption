@@ -41,7 +41,7 @@ void encode(char* msg, char* key, int len){
 
 /* Handles SIGCHLD signals */
 void sigchld_handler(int s){
-	printf("SIGCHLD HANDLER\n");
+	//printf("SIGCHLD HANDLER\n");
 	int saved_errno = errno;
 	while(waitpid(-1, NULL, WNOHANG) > 0);
 	errno = saved_errno;
@@ -51,34 +51,33 @@ void sigchld_handler(int s){
 int recvAll(int clientSocket, int size, char* data){
 	int bytesLeft = size;
 	int totalBytesRecvd =0, n=0;
-	memset(data,'\0',sizeof(data));
 	
 	while (bytesLeft != 0){
-		//printf("==SERVER== reading %d bytes\n", bytesLeft); FLUSH;
 		n = recv(clientSocket, data, bytesLeft, 0);
-		//printf("SERVER RECEIVING chunk n=%d bytes\n",n);
-		//printf("THOSE TWO BYTES WERE data=%s",data);
-		if (n == 0){
-			//printf("==SERVER== 2. n=%d\n",n); FLUSH;
-			break;
-		}
-		else if (n < 0 && errno != EINTR){
-			//printf("==SERVER== 3. n=%d\n",n);
-			//printf("Exit %d\n", __LINE__); FLUSH;
-			exit(1);
-		}
+		if (n == 0) break;
+		else if (n < 0 && errno != EINTR) exit(1);
 		else if (n > 0){
-			//printf("==SERVER== 4. n=%d\n",n); FLUSH;
 			totalBytesRecvd += n;
 			data += n;
 			bytesLeft -= n;
-			//printf("4. n=%d, totalBytesRecvd=%d, bytesLeft=%d",n, totalBytesRecvd, bytesLeft);
-			//fprintf(stderr, "read %d bytes - remaining = %d\n", n, bytesLeft);
 		}
 	}
-	//fprintf(stderr, "read total of %d bytes, dataRead=%s\n", totalBytesRecvd,data);
-	//printf("==SERVER== FINISHED READING\n"); FLUSH;
 	return n==-1?-1:0; // return -1 on failure, 0 on success
+}
+
+void receiveData(int clientSocket, int size, char* data){
+	memset(data,'\0',sizeof(data));
+	if(recvAll(clientSocket,size,data) == -1){
+		fprintf(stderr,"otp_enc_d: recv error\n");
+	} //printf("1. TRACE: data=%s\n",data); FLUSH;
+}
+
+void sendData(int clientSocket, char* data, int length){
+	int len=length;
+	if(sendAll(clientSocket,data,&len) == -1){
+		fprintf(stderr,"otp_enc: send error\n");
+	}
+	
 }
 
 /* Calls send() until all bytes sent */
@@ -96,6 +95,31 @@ int sendAll(int s, char *buf, int *len){
     return n==-1?-1:0; // return -1 on failure, 0 on success
 } 
 
+void removeLeadingZeroes(char* data){
+	char tmp[5]={0};
+	int i=0, j=0;
+	for(i=0; i<((int)(strlen(data))); i++){
+		if(data[i] != '0'){
+			tmp[j++]=data[i];
+		}
+	}
+	memset((char*)data,'\0',sizeof(data));
+	strcpy(data,tmp);//printf("SERVER tmp=%s\n",tmp); FLUSH;
+}
+
+int convertStringToInteger(char* data){
+	errno=0;
+	char *endptr;
+	int len = strtol(data,&endptr,10);
+	if ((errno == ERANGE && (len == LONG_MAX || len == LONG_MIN)) || (errno != 0 && len == 0)) {
+		fprintf(stderr,"Error: Invalid plaintext length\n");
+		exit(1); 
+	} else if(!len){
+		fprintf(stderr,"Error: Plaintext's length must be an integer\n");
+		exit(1);
+	}
+	return len;
+}
 
 int main(int argc, char* argv[]){
 	/* Define variables*/
@@ -103,7 +127,7 @@ int main(int argc, char* argv[]){
 	pid_t pid;
 	socklen_t clientLen;
 	struct sockaddr_in serverAddress, clientAddress;
-	char data[MSG_SIZE]={0}, key[MSG_SIZE]={0};
+	char data[MSG_SIZE]={0}, plaintext[MSG_SIZE]={0}, key[MSG_SIZE]={0};
 	char acknowledgement[] = "OK";
 	char *endptr;
 	struct sigaction sa;
@@ -134,7 +158,6 @@ int main(int argc, char* argv[]){
 		fprintf(stderr,"Error: port number must be an integer\n");
 		exit(1);
 	}
-	//printf("TRACE: portno=%d\n",portno); FLUSH;
 	
 	/* Set up server address */
 	serverAddress.sin_family = AF_INET;
@@ -162,10 +185,6 @@ int main(int argc, char* argv[]){
 		perror("sigaction");
 		exit(1);
 	}
-	
-	//printf("otp_enc_d: Waiting for connections...\n"); FLUSH;
-	
-	
 	/* Accept simultaneous connections */
 	while(1){ //accept loop
 		if((clientSocket=accept(serverSocket,(struct sockaddr*)&clientAddress,&clientLen))<0){
@@ -179,165 +198,40 @@ int main(int argc, char* argv[]){
 		}
 		if(pid==0){ //child
 			close(serverSocket); //child does not need listener
-			//printf("TRACE: FORKED! CONNECTED to OTP_ENC_D!\n");FLUSH;
-			
-			/* Recv all bytes of authentication, expect 7 bytes/chars in otp_enc*/
-			if(recvAll(clientSocket,7,data) == -1){
-				fprintf(stderr,"otp_enc_d: recv error\n");
-			} 
-			//printf("1. TRACE: data=%s\n",data); FLUSH;
-			
+			receiveData(clientSocket,7,data); /* Recv all bytes of authentication, expect 7 bytes/chars in otp_enc*/
 			/* Authentication (verify that client is otp_enc) */
 			if(strcmp(data,"otp_enc") != 0){ //not the correct identity
-				fprintf(stderr,"Client %s: connection denied. Client must be otp_enc",data);
+				printf("Client %s: connection denied. Client must be otp_enc",data); FLUSH;
 				close(clientSocket);
 				exit(1);
 			} else{ //client identity confirmed
-				fprintf(stderr,"Client %s: connection established.",data);
-				
-				/* Send acknowledgement */
-				//printf("SERVER SENDING FIRST ACK\n");
-				ackLen=2;
-				if(sendAll(clientSocket,acknowledgement,&ackLen) == -1){
-					fprintf(stderr,"otp_enc: send error\n");
-				}
-				
-				/* Receive length of plaintext for encryption */
-				//printf("SERVER: ABOUT TO RECEIVE PLAINTEXT LEN\n"); FLUSH;
-				if(recvAll(clientSocket,5,data) == -1){
-					fprintf(stderr,"otp_enc_d: recv error\n");
-				} 
-				printf("TRACE: plaintext len=%s\n",data); FLUSH;
-				
-				/* Strip leading zeros before conversion */
-				char tmp[5]={0};
-				int i,j=0;
-				for(i=0; i<((int)(strlen(data))); i++){
-					if(data[i] != '0'){
-						tmp[j++]=data[i];
-					}
-				}
-				//printf("SERVER tmp=%s\n",tmp); FLUSH;
-				
-				errno=0;
-				len = strtol(data,&endptr,10);
-				if ((errno == ERANGE && (portno == LONG_MAX || len == LONG_MIN)) || (errno != 0 && len == 0)) {
-					fprintf(stderr,"Error: Invalid plaintext length\n");
-					exit(1); 
-				} else if(!portno){
-					fprintf(stderr,"Error: Plaintext's length must be an integer\n");
-					exit(1);
-				}
-				printf("TRACE: converted plaintext len=%d\n",len); FLUSH;
-				
-				/* Send acknowledgement */
-				//printf("SERVER SENDING SECOND ACK\n");
-				ackLen=2;
-				strcpy(acknowledgement,"OK");
-				if(sendAll(clientSocket,acknowledgement,&ackLen) == -1){
-					fprintf(stderr,"otp_enc: send error\n");
-				}
-				
-				/* Receive plaintext for encryption */
-				//printf("SERVER: ABOUT TO RECEIVE PLAINTEXT of len=%d!!!\n",len); FLUSH;
-				if(recvAll(clientSocket,len,data) == -1){
-					fprintf(stderr,"otp_enc_d: recv error\n");
-				} 
-				printf("2. TRACE: plaintext=%s\n",data); FLUSH;
-				
-				/* Send acknowledgement */
-				//printf("SERVER SENDING SECOND ACK\n");
-				ackLen=2;
-				strcpy(acknowledgement,"OK");
-				if(sendAll(clientSocket,acknowledgement,&ackLen) == -1){
-					fprintf(stderr,"otp_enc: send error\n");
-				}
-
-				
-				
-				
-				/* Receive length of keyfile for encryption */
-				//printf("SERVER: ABOUT TO RECEIVE KEYFILE LEN\n"); FLUSH;
-				if(recvAll(clientSocket,5,data) == -1){
-					fprintf(stderr,"otp_enc_d: recv error\n");
-				} 
-				//printf("TRACE: keyfile len=%s\n",data); FLUSH;
-				
-				/* Strip leading zeros before conversion */
-				memset(tmp,'0',sizeof(tmp));
-				i,j=0;
-				for(i=0; i<((int)(strlen(data))); i++){
-					if(data[i] != '0'){
-						tmp[j++]=data[i];
-					}
-				}
-				//printf("SERVER key stripped leading zero=%s\n",tmp); FLUSH;
-				
-				errno=0;
-				len = strtol(data,&endptr,10);
-				if ((errno == ERANGE && (portno == LONG_MAX || len == LONG_MIN)) || (errno != 0 && len == 0)) {
-					fprintf(stderr,"Error: Invalid plaintext length\n");
-					exit(1); 
-				} else if(!portno){
-					fprintf(stderr,"Error: Plaintext's length must be an integer\n");
-					exit(1);
-				}
-				printf("TRACE: converted key len=%d\n",len); FLUSH;
-				
-				/* Send acknowledgement */
-				//printf("SERVER SENDING KEYLEN ACK\n");
-				ackLen=2;
-				strcpy(acknowledgement,"OK");
-				if(sendAll(clientSocket,acknowledgement,&ackLen) == -1){
-					fprintf(stderr,"otp_enc: send error\n");
-				}
-				
-				/* Receive key for encryption */
-				//printf("SERVER: ABOUT TO RECEIVE KEYFILE of len=%d!!!\n",len); FLUSH;
-				if(recvAll(clientSocket,len,data) == -1){
-					fprintf(stderr,"otp_enc_d: recv error\n");
-				} 
-				printf("TRACE: key=%s\n",data); FLUSH;
-				
-				/* Send acknowledgement */
-				//printf("SERVER SENDING SECOND ACK\n");
-				ackLen=2;
-				strcpy(acknowledgement,"OK");
-				if(sendAll(clientSocket,acknowledgement,&ackLen) == -1){
-					fprintf(stderr,"otp_enc: send error\n");
-				}
-				
-				/* Perform encryption */
-				
-				
-			
-				/* Send ciphertext to client */
-			
+				sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
+				receiveData(clientSocket,5,data); /* Receive length of plaintext for encryption */
+				removeLeadingZeroes(data); /* Strip leading zeros before conversion */
+				len = convertStringToInteger(data);				
+				sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
+				receiveData(clientSocket,len,data);
+				strcpy(plaintext,data);
+				sendData(clientSocket,acknowledgement,2);
+				receiveData(clientSocket,5,data); /* Receive length of keyfile for encryption */				
+				removeLeadingZeroes(data); /* Strip leading zeros before conversion */
+				len = convertStringToInteger(data);
+				sendData(clientSocket,acknowledgement,2);
+				receiveData(clientSocket,len,data);
+				strcpy(key,data); /* Store key */
+				sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
+				encode(plaintext,key,(int)(strlen(plaintext))); /* Perform encryption */
+				sendData(clientSocket,plaintext,(int)(strlen(plaintext))); /* Send ciphertext to client */
+				receiveData(clientSocket,2,data); /* Receive acknowledgement */
 				exit(0); //this child should send SIGCHLD to parent
 			}
 		}
 		else{ //parent
 			close(clientSocket);
 			numClientsConnected++;
-			printf("congratulations, numClientsConnected=%d\n",numClientsConnected);
 		}
 		
 	}
 	
 	return 0;
 }
-
-
-
-/* Test Code */
-/*strcpy(msg,"HELLO WORLD");
-	strcpy(key,"XMCKLA CDAB");	
-	if((int)(strlen(key)) < (int)(strlen(msg))){
-		fprintf(stderr,"Error: key '%s' is too short");
-		exit(EXIT_FAILURE);
-	}
-	printf("BEFORE: msg=%s",msg);
-	encode(msg,key,(int)(strlen(msg)));
-	printf("ENCODED: msg=%s",msg);
-	decode(msg,key,(int)(strlen(msg)));
-	printf("DECODED: msg=%s",msg);*/

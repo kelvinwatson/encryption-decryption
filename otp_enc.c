@@ -30,13 +30,16 @@ int sendAll(int s, char *buf, int *len){
     int total = 0;        // bytes sent
     int bytesleft = *len; // bytes left to send
     int n;
-    while(total < *len) {
+	
+	while(total < *len) {
         n = send(s, buf+total, bytesleft, 0);
-        if (n == -1) { break; }
+        printf("CLIENT sending chunk n=%dbytes\n",n);
+		if (n == -1) { break; }
         total += n;
         bytesleft -= n;
     }
     *len = total; // return number actually sent here
+	
     return n==-1?-1:0; // return -1 on failure, 0 on success
 } 
 
@@ -45,23 +48,23 @@ int recvAll(int clientSocket, int size, char* data){
 	int bytesLeft = size;
 	int totalBytesRecvd =0, n=0;
 	//printf("DATA BEFORE READ?=%s",data);
+	memset(data,'\0',sizeof(data));
 	while (bytesLeft != 0){
-		fprintf(stderr, "reading %d bytes\n", bytesLeft);
-		memset(data,'\0',sizeof(data));
+		fprintf(stderr, "==CLIENT== reading %d bytes\n", bytesLeft);
 		n = recv(clientSocket, data, bytesLeft, 0);
 		//printf("DATA AFTER A READ?=%s",data);
 		//printf("1. n=%d",n);
 		if (n == 0){
-			//printf("2. n=%d",n);
+			printf("==CLIENT== 2. n=%d\n",n);
 			break;
 		}
 		else if (n < 0 && errno != EINTR){
-			//printf("3. n=%d",n);
+			printf("==CLIENT== 3. n=%d\n",n);
 			fprintf(stderr, "Exit %d\n", __LINE__);
 			exit(1);
 		}
 		else if (n > 0){
-			//printf("4. n=%d",n);
+			printf("==CLIENT==4. n=%d\n",n);
 			totalBytesRecvd += n;
 			data += n;
 			bytesLeft -= n;
@@ -70,6 +73,7 @@ int recvAll(int clientSocket, int size, char* data){
 		}
 	}
 	//fprintf(stderr, "read total of %d bytes, dataRead=%s\n", totalBytesRecvd,data);
+	printf("==CLIENT== finished receiving ");FLUSH;
 	return n==-1?-1:0; // return -1 on failure, 0 on success
 }
 
@@ -165,10 +169,11 @@ int main(int argc, char* argv[]){
 	}
 	
 	pLen=(int)(strlen(plaintext));
-	printf("\nTRACE:otp_enc: read in data from plaintextfile=%s,len=%d\n",plaintext,pLen); FLUSH; //counts newline
-	printf("i=%d",pLen);
+	//printf("\nTRACE:otp_enc: read in data from plaintextfile=%s,len=%d\n",plaintext,pLen); FLUSH; //counts newline
+	//printf("i=%d",pLen);
 	plaintext[(int)(strlen(plaintext))-1]='\0';
-	printf("\nTRACE:otp_enc: replace Newline with nullterminator plaintextfile=%s,len=%d\n",plaintext,pLen); FLUSH; //counts newline
+	pLen=(int)(strlen(plaintext));
+	//printf("\nTRACE:otp_enc: replace Newline with nullterminator plaintextfile=%s,len=%d\n",plaintext,pLen); FLUSH; //counts newline
 	
 	/*while(fgets(buf,MSG_SIZE,fp) != NULL){
 		strcat(plaintext,buf);
@@ -182,6 +187,7 @@ int main(int argc, char* argv[]){
 	fseek(fpk,0,SEEK_SET);
 	//memset(data,'\0',sizeof(data));
 	memset(key,'\0',sizeof(key));
+	i=0;
 	while ((c = fgetc(fpk)) != EOF){
 		if(c!=32 && c!=13 && c!=10 && (c<65 || c>90)){
 			printf("c=%c\n",c);
@@ -192,10 +198,11 @@ int main(int argc, char* argv[]){
 	}
 	
 	kLen=(int)(strlen(key));
-	printf("\nTRACE:otp_enc: read in data from keyfile=%s,len=%d\n",key,kLen); FLUSH; //counts newline
-	printf("i=%d",kLen);
+	//printf("\nTRACE:otp_enc: read in data from keyfile=%s,len=%d\n",key,kLen); FLUSH; //counts newline
+	//printf("i=%d",kLen);
 	key[(int)(strlen(key))-1]='\0';
-	printf("\nTRACE:otp_enc: replace Newline with nullterminator keyfile=%s,len=%d\n",key,kLen); FLUSH; //counts newline
+	kLen=(int)(strlen(key));
+	//printf("\nTRACE:otp_enc: replace Newline with nullterminator keyfile=%s,len=%d\n",key,kLen); FLUSH; //counts newline
 	
 	if(kLen<pLen){
 		printf("Error: key '%s' is too short\n",argv[2]); FLUSH;
@@ -206,7 +213,55 @@ int main(int argc, char* argv[]){
 	fclose(fp);
 	fclose(fpk);
 	
-	//read the plaintext data into a buffer
+	
+	//read the plaintext len into a buffer
+	memset(buf,'\0',sizeof(buf));
+	sprintf(buf,"%05d",pLen); //pad with leading zeros
+	printf("plaintextlen=%s\n",buf); FLUSH;
+	int digits = (int)(strlen(buf)); //numDigits == numBytes
+	
+	
+	printf("CLIENT's digits is =%d\n",digits);
+	/* pad this with zeroes to total of 5 digits */
+	char tmp[5] = {'0'}; //padded with 0's
+	printf("CLIENT tmp=%s\n",tmp);FLUSH;
+	
+	//insert digits from buf into tmp starting at far right
+	int j=4;
+	for(i=(digits-1); i>=0; i--){
+		printf("CLIENT buf[i]==%c",buf[i]);
+		tmp[j]=buf[i];
+		printf("CLIENT tmp[j]==%c",tmp[j]);
+		--j;
+	} 
+	printf("CLIENT tmp=%s\n",tmp);FLUSH;
+	
+	
+	
+	
+	/* send length of plaintext */
+	len=5;
+	if(sendAll(clientSocket,tmp,&len) == -1){
+		fprintf(stderr,"otp_enc: send error\n");
+	}
+	printf("CLIENT JUST FINISHED SENDING PLAINTEXT LEN\n"); FLUSH;
+	
+	memset(data,'\0',sizeof(data));
+	if(recvAll(clientSocket,2,data) == -1){
+		fprintf(stderr,"otp_enc: recv error\n");
+		exit(1);
+	} else if(strcmp(data,"OK")==0){
+		printf("ACK RECVD IS=%s\n",data);FLUSH;
+	}
+	
+	printf("CLIENT ABOUT TO SEND PLAINTEXT\n"); FLUSH;
+	/* send plaintext */
+	len=pLen;
+	printf("plaintext=%s",plaintext);
+	if(sendAll(clientSocket,plaintext,&len) == -1){
+		fprintf(stderr,"otp_enc: send error\n");
+	}
+	
 	//send plaintext data length to otp_enc_d
 	//receive acknowledgement from otp_enc_d
 	//send plaintext to otp_enc_d

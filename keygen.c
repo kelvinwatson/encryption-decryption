@@ -38,9 +38,6 @@ int main(int argc, char* argv[]){
 	for(i=0; i<26; i++){
 		legalChars[i]=i+65;
 	}
-	for(i=0; i<27; i++)
-		printf("legalChars=%c",legalChars[i]);
-	
 	for(i=0; i<kLen; i++){
 		key[i]=legalChars[rand()%27];
 	}

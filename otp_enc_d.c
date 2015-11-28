@@ -51,32 +51,33 @@ void sigchld_handler(int s){
 int recvAll(int clientSocket, int size, char* data){
 	int bytesLeft = size;
 	int totalBytesRecvd =0, n=0;
-	//printf("DATA BEFORE READ?=%s",data);
+	memset(data,'\0',sizeof(data));
+	
 	while (bytesLeft != 0){
-		fprintf(stderr, "reading %d bytes\n", bytesLeft);
-		memset(data,'\0',sizeof(data));
+		printf("==SERVER== reading %d bytes\n", bytesLeft); FLUSH;
 		n = recv(clientSocket, data, bytesLeft, 0);
-		//printf("DATA AFTER A READ?=%s",data);
-		//printf("1. n=%d",n);
+		printf("SERVER RECEIVING chunk n=%d bytes\n",n);
+		printf("THOSE TWO BYTES WERE data=%s",data);
 		if (n == 0){
-			//printf("2. n=%d",n);
+			printf("==SERVER== 2. n=%d\n",n); FLUSH;
 			break;
 		}
 		else if (n < 0 && errno != EINTR){
-			//printf("3. n=%d",n);
-			fprintf(stderr, "Exit %d\n", __LINE__);
+			printf("==SERVER== 3. n=%d\n",n);
+			printf("Exit %d\n", __LINE__); FLUSH;
 			exit(1);
 		}
 		else if (n > 0){
-			//printf("4. n=%d",n);
+			printf("==SERVER== 4. n=%d\n",n); FLUSH;
 			totalBytesRecvd += n;
 			data += n;
 			bytesLeft -= n;
-			//printf("4. n=%d, totalBytesRecvd=%d, bytesLeft=%d",n, totalBytesRecvd, bytesLeft);
+			printf("4. n=%d, totalBytesRecvd=%d, bytesLeft=%d",n, totalBytesRecvd, bytesLeft);
 			//fprintf(stderr, "read %d bytes - remaining = %d\n", n, bytesLeft);
 		}
 	}
 	//fprintf(stderr, "read total of %d bytes, dataRead=%s\n", totalBytesRecvd,data);
+	printf("==SERVER== FINISHED READING\n"); FLUSH;
 	return n==-1?-1:0; // return -1 on failure, 0 on success
 }
 
@@ -98,7 +99,7 @@ int sendAll(int s, char *buf, int *len){
 
 int main(int argc, char* argv[]){
 	/* Define variables*/
-	int serverSocket, clientSocket, portno, result, len, numClientsConnected=0;
+	int ackLen, serverSocket, clientSocket, portno, result, len, numClientsConnected=0;
 	pid_t pid;
 	socklen_t clientLen;
 	struct sockaddr_in serverAddress, clientAddress;
@@ -184,7 +185,7 @@ int main(int argc, char* argv[]){
 			if(recvAll(clientSocket,7,data) == -1){
 				fprintf(stderr,"otp_enc_d: recv error\n");
 			} 
-			printf("!!!TRACE: data=%s\n",data); FLUSH;
+			printf("1. TRACE: data=%s\n",data); FLUSH;
 			
 			/* Authentication (verify that client is otp_enc) */
 			if(strcmp(data,"otp_enc") != 0){ //not the correct identity
@@ -193,16 +194,33 @@ int main(int argc, char* argv[]){
 				exit(1);
 			} else{ //client identity confirmed
 				fprintf(stderr,"Client %s: connection established.",data);
+				
 				/* Send acknowledgement */
-				len=2;
-				if(sendAll(clientSocket,acknowledgement,&len) == -1){
+				printf("SERVER SENDING FIRST ACK\n");
+				ackLen=2;
+				if(sendAll(clientSocket,acknowledgement,&ackLen) == -1){
 					fprintf(stderr,"otp_enc: send error\n");
 				}
 				
-				/* Receive number of length of data for encryption */
-				/*recvAll(clientSocket,MSG_SIZE,data); 
+				/* Receive length of plaintext for encryption */
+				printf("SERVER: ABOUT TO RECEIVE PLAINTEXT LEN\n"); FLUSH;
+				if(recvAll(clientSocket,5,data) == -1){
+					fprintf(stderr,"otp_enc_d: recv error\n");
+				} 
+				printf("2. TRACE: data=%s\n",data); FLUSH;
+				
+				/* Strip leading zeros before conversion */
+				char tmp[5]={0};
+				int i,j=0;
+				for(i=0; i<((int)(strlen(data))); i++){
+					if(data[i] != '0'){
+						tmp[j++]=data[i];
+					}
+				}
+				printf("SERVER tmp=%s\n",tmp); FLUSH;
+				
 				errno=0;
-				int len = strtol(data,&endptr,10);
+				len = strtol(data,&endptr,10);
 				if ((errno == ERANGE && (portno == LONG_MAX || len == LONG_MIN)) || (errno != 0 && len == 0)) {
 					fprintf(stderr,"Error: Invalid plaintext length\n");
 					exit(1); 
@@ -211,6 +229,24 @@ int main(int argc, char* argv[]){
 					exit(1);
 				}
 				printf("TRACE: len=%d\n",len); FLUSH;
+				
+				/* Send acknowledgement */
+				printf("SERVER SENDING SECOND ACK\n");
+				ackLen=2;
+				strcpy(acknowledgement,"OK");
+				if(sendAll(clientSocket,acknowledgement,&ackLen) == -1){
+					fprintf(stderr,"otp_enc: send error\n");
+				}
+				
+				/* Receive length of plaintext for encryption */
+				printf("SERVER: ABOUT TO RECEIVE PLAINTEXT of len=%d!!!\n",len); FLUSH;
+				if(recvAll(clientSocket,len,data) == -1){
+					fprintf(stderr,"otp_enc_d: recv error\n");
+				} 
+				printf("2. TRACE: data=%s\n",data); FLUSH;
+				printf("2. TRACE: data=%s\n",data); FLUSH;
+				printf("2. TRACE: data=%s\n",data); FLUSH;
+
 				
 				/* Receive actual data for encryption */
 				//recvAll(clientSocket,MSG_SIZE,data);

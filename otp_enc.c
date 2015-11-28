@@ -33,7 +33,7 @@ int sendAll(int s, char *buf, int *len){
 	
 	while(total < *len) {
         n = send(s, buf+total, bytesleft, 0);
-        printf("CLIENT sending chunk n=%dbytes\n",n);
+        //printf("CLIENT sending chunk n=%dbytes\n",n);
 		if (n == -1) { break; }
         total += n;
         bytesleft -= n;
@@ -59,12 +59,12 @@ int recvAll(int clientSocket, int size, char* data){
 			break;
 		}
 		else if (n < 0 && errno != EINTR){
-			printf("==CLIENT== 3. n=%d\n",n);
+			//printf("==CLIENT== 3. n=%d\n",n);
 			fprintf(stderr, "Exit %d\n", __LINE__);
 			exit(1);
 		}
 		else if (n > 0){
-			printf("==CLIENT==4. n=%d\n",n);
+			//printf("==CLIENT==4. n=%d\n",n);
 			totalBytesRecvd += n;
 			data += n;
 			bytesLeft -= n;
@@ -105,7 +105,7 @@ int main(int argc, char* argv[]){
 		fprintf(stderr,"Error: port number must be an integer\n");
 		exit(1);
 	}
-	printf("TRACE: portno=%d\n",portno); FLUSH;
+	//printf("TRACE: portno=%d\n",portno); FLUSH;
 	
 	if((clientSocket = socket(AF_INET,SOCK_STREAM,0))<0){
 		perror("otp_enc: socket"); FLUSH;
@@ -128,7 +128,7 @@ int main(int argc, char* argv[]){
 		printf("Error: could not contact otp_enc_d on port %d\n",portno);FLUSH;
 		exit(2);
 	} else{
-		printf("otp_enc: CONNECTED TO SERVER"); FLUSH;
+		//printf("otp_enc: CONNECTED TO SERVER"); FLUSH;
 	}
 	
 	/* Send the otp_enc */
@@ -161,7 +161,7 @@ int main(int argc, char* argv[]){
 	i=0;
 	while ((c = fgetc(fp)) != EOF){
 		if(c!=32 && c!=13 && c!=10 && (c<65 || c>90)){
-			printf("c=%c\n",c);
+			//printf("c=%c\n",c);
 			printf("otp_enc error: input contains bad characters\n"); FLUSH;
 			exit(1);
 		}
@@ -190,7 +190,7 @@ int main(int argc, char* argv[]){
 	i=0;
 	while ((c = fgetc(fpk)) != EOF){
 		if(c!=32 && c!=13 && c!=10 && (c<65 || c>90)){
-			printf("c=%c\n",c);
+			//printf("c=%c\n",c);
 			printf("otp_enc error: input contains bad characters\n"); FLUSH;
 			exit(1);
 		}
@@ -217,24 +217,24 @@ int main(int argc, char* argv[]){
 	//read the plaintext len into a buffer
 	memset(buf,'\0',sizeof(buf));
 	sprintf(buf,"%05d",pLen); //pad with leading zeros
-	printf("plaintextlen=%s\n",buf); FLUSH;
+	//printf("plaintextlen=%s\n",buf); FLUSH;
 	int digits = (int)(strlen(buf)); //numDigits == numBytes
 	
 	
-	printf("CLIENT's digits is =%d\n",digits);
+	//printf("CLIENT's digits is =%d\n",digits);
 	/* pad this with zeroes to total of 5 digits */
 	char tmp[5] = {'0'}; //padded with 0's
-	printf("CLIENT tmp=%s\n",tmp);FLUSH;
+	//printf("CLIENT tmp=%s\n",tmp);FLUSH;
 	
 	//insert digits from buf into tmp starting at far right
 	int j=4;
 	for(i=(digits-1); i>=0; i--){
-		printf("CLIENT buf[i]==%c",buf[i]);
+		//printf("CLIENT buf[i]==%c",buf[i]);
 		tmp[j]=buf[i];
-		printf("CLIENT tmp[j]==%c",tmp[j]);
+		//printf("CLIENT tmp[j]==%c",tmp[j]);
 		--j;
 	} 
-	printf("CLIENT tmp=%s\n",tmp);FLUSH;
+	//printf("CLIENT tmp=%s\n",tmp);FLUSH;
 	
 	
 	
@@ -244,23 +244,87 @@ int main(int argc, char* argv[]){
 	if(sendAll(clientSocket,tmp,&len) == -1){
 		fprintf(stderr,"otp_enc: send error\n");
 	}
-	printf("CLIENT JUST FINISHED SENDING PLAINTEXT LEN\n"); FLUSH;
+	//printf("CLIENT JUST FINISHED SENDING PLAINTEXT LEN\n"); FLUSH;
 	
+	/* Receive acknowledgement */
 	memset(data,'\0',sizeof(data));
 	if(recvAll(clientSocket,2,data) == -1){
 		fprintf(stderr,"otp_enc: recv error\n");
 		exit(1);
 	} else if(strcmp(data,"OK")==0){
-		printf("ACK RECVD IS=%s\n",data);FLUSH;
+		//printf("ACK RECVD IS=%s\n",data);FLUSH;
 	}
 	
 	printf("CLIENT ABOUT TO SEND PLAINTEXT\n"); FLUSH;
 	/* send plaintext */
 	len=pLen;
-	printf("plaintext=%s",plaintext);
+	//printf("plaintext=%s",plaintext);
 	if(sendAll(clientSocket,plaintext,&len) == -1){
 		fprintf(stderr,"otp_enc: send error\n");
 	}
+	
+	/* Receive acknowledgement */
+	memset(data,'\0',sizeof(data));
+	if(recvAll(clientSocket,2,data) == -1){
+		fprintf(stderr,"otp_enc: recv error\n");
+		exit(1);
+	} else if(strcmp(data,"OK")==0){
+		//printf("ACK RECVD IS=%s\n",data);FLUSH;
+	}
+
+
+	//read the key len into a buffer
+	memset(buf,'\0',sizeof(buf));
+	sprintf(buf,"%05d",kLen); //pad with leading 
+	//printf("plaintextlen=%s\n",buf); FLUSH;
+	digits = (int)(strlen(buf)); //numDigits == numBytes
+	//printf("\n2.CLIENT's key digits is =%d\n",digits); FLUSH;
+	/* pad this with zeroes to total of 5 digits */
+	memset(tmp,'0',sizeof(tmp));
+	//printf("2. CLIENT tmp=%s\n",tmp);FLUSH;
+	//insert digits from buf into tmp starting at far right
+	j=4;
+	for(i=(digits-1); i>=0; i--){
+		//printf("CLIENT buf[i]==%c",buf[i]);
+		tmp[j]=buf[i];
+		//printf("CLIENT tmp[j]==%c",tmp[j]);
+		--j;
+	} 
+	//printf("CLIENT tmp=%s\n",tmp);FLUSH;
+	
+	/* send length of keyfile */
+	len=5;
+	if(sendAll(clientSocket,tmp,&len) == -1){
+		fprintf(stderr,"otp_enc: send error\n");
+	}
+	//printf("CLIENT JUST FINISHED SENDING KEYFILE LEN\n"); FLUSH;
+	
+	/* Receive acknowledgement */
+	memset(data,'\0',sizeof(data));
+	if(recvAll(clientSocket,2,data) == -1){
+		fprintf(stderr,"otp_enc: recv error\n");
+		exit(1);
+	} else if(strcmp(data,"OK")==0){
+		//printf("ACK RECVD IS=%s\n",data);FLUSH;
+	}
+	
+	printf("CLIENT ABOUT TO SEND PLAINTEXT\n"); FLUSH;
+	/* send plaintext */
+	len=kLen;
+	printf("key=%s",key);
+	if(sendAll(clientSocket,key,&len) == -1){
+		fprintf(stderr,"otp_enc: send error\n");
+	}
+	
+	/* Receive acknowledgement */
+	memset(data,'\0',sizeof(data));
+	if(recvAll(clientSocket,2,data) == -1){
+		fprintf(stderr,"otp_enc: recv error\n");
+		exit(1);
+	} else if(strcmp(data,"OK")==0){
+		//printf("ACK RECVD IS=%s\n",data);FLUSH;
+	}
+
 	
 	//send plaintext data length to otp_enc_d
 	//receive acknowledgement from otp_enc_d

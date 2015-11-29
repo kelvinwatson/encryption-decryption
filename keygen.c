@@ -1,15 +1,24 @@
+/* Programmed by Kelvin Watson
+* File name: keygen.c 
+* Created/Last modified: 24Nov15 / 27Nov15
+* Description: Generates a key 
+* Usage: keygen keylength or keygen keylength > file
+* Sources/Citations: http://beej.us/guide/bgnet/output/html/multipage/advanced.html
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
 #include <errno.h>
 #include <string.h>
-
+#include <time.h>
 
 #define FLUSH fflush(stdout)
+#define KEY_LEN 999999
 
 int main(int argc, char* argv[]){
 	srand(time(NULL));
-	int	i, r, fdo, kLen;
+	int	i, kLen;
 	char *endptr;
 
 	/* validate command line arguments */
@@ -32,7 +41,7 @@ int main(int argc, char* argv[]){
 	}
 
 	/* populate buffer with random sequence of chars */
-	char key[10000] = {0};
+	char key[KEY_LEN] = {0};
 	char legalChars[27] = {-1};
 	legalChars[26]=32;
 	for(i=0; i<26; i++){

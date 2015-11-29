@@ -1,8 +1,8 @@
 /* Programmed by Kelvin Watson
-* File name: otp_enc_d.c 
-* Created/Last modified: 24Nov15 / 26Nov15
-* Description: Acts as a client, sending plaintext and a key to a server,
-* then receiving and outputting the encoded ciphertext
+* File name: otp_dec.c 
+* Created/Last modified: 24Nov15 / 28Nov15
+* Description: Acts as a client, sending ciphertext and a key to a server,
+* then receiving and outputting the decoded plaintext
 * Sources/Citations: http://beej.us/guide/bgnet/output/html/multipage/advanced.html
 */
 
@@ -18,7 +18,7 @@
 #include <netdb.h> 
 
 #define FLUSH fflush(stdout);
-#define MSG_SIZE 1000
+#define MSG_SIZE 999999
 
 /* Clears buffer after keyboard input via fgets */
 void clearBuffer(FILE* fp){
@@ -45,7 +45,7 @@ int sendAll(int s, char *buf, int *len){
 void sendData(int clientSocket, char* data, int length){
 	int len=length;
 	if(sendAll(clientSocket,data,&len) == -1){
-		fprintf(stderr,"otp_enc: send error\n");
+		fprintf(stderr,"otp_dec: send error\n");
 	}
 	memset(data,'\0',sizeof(data));
 }
@@ -57,9 +57,9 @@ int recvAll(int clientSocket, int size, char* data){
 	memset(data,'\0',sizeof(data));
 	while (bytesLeft != 0){
 		n = recv(clientSocket, data, bytesLeft, 0);
-		if (n == 0) break;
-		else if (n < 0 && errno != EINTR){
-			fprintf(stderr, "Exit %d\n", __LINE__);
+		if (n < 0 && errno != EINTR){
+			perror("otp_dec: recv()");
+			//fprintf(stderr, "Exit %d\n", __LINE__);
 			exit(1);
 		}
 		else if (n > 0){
@@ -75,7 +75,7 @@ int recvAll(int clientSocket, int size, char* data){
 void receiveData(int clientSocket, int size, char* data){
 	memset(data,'\0',sizeof(data));
 	if(recvAll(clientSocket,size,data) == -1){
-		fprintf(stderr,"otp_enc_d: recv error\n");
+		fprintf(stderr,"otp_dec: recv error\n");
 	}
 }
 
@@ -84,7 +84,7 @@ int readFile(char* file, char* buf){
 	char c;
 	FILE* fp = fopen(file,"r");
 	if(fp == NULL){
-		perror("otp_enc: fopen()");FLUSH;
+		perror(file);FLUSH;
 		exit(1);
 	}
 	fseek(fp,0,SEEK_SET); //rewind to beginning of file
@@ -92,7 +92,7 @@ int readFile(char* file, char* buf){
 	i=0;
 	while ((c = fgetc(fp)) != EOF){
 		if(c!=32 && c!=13 && c!=10 && (c<65 || c>90)){
-			printf("otp_enc error: input contains bad characters\n"); FLUSH;
+			fprintf(stderr,"otp_dec error: input file %s contains bad characters\n",file); FLUSH;
 			exit(1);
 		}
 		buf[i++]=c;
@@ -119,17 +119,16 @@ void padWithLeadingZeros(int len,char* tmp){
 
 int main(int argc, char* argv[]){
 	/* Define variables */
-	char userInput[MSG_SIZE] = {0}, plaintext[MSG_SIZE] = {0}, key[MSG_SIZE] = {0}, buf[MSG_SIZE] = {0}, data[MSG_SIZE] = {0};
-	int i, clientSocket, portno, len, ackLen, pLen, kLen;
+	char ciphertext[MSG_SIZE] = {0}, key[MSG_SIZE] = {0}, data[MSG_SIZE] = {0};
+	int clientSocket, portno, cLen, kLen;
 	struct sockaddr_in serverAddress;
 	struct hostent *server;
-	char *endptr, *inputExists;
-	char c;
+	char *endptr;
 	char acknowledgement[] = "OK";
 	char tmp[5] = {'0'};
 	
 	if(argc != 4){ //incorrect number of arguments
-		fprintf(stderr,"Usage: otp_enc plaintext key port\n");
+		fprintf(stderr,"Usage: otp_dec ciphertext key port\n");
 		exit(1);
 	}
 	
@@ -147,12 +146,12 @@ int main(int argc, char* argv[]){
 	}
 	
 	if((clientSocket = socket(AF_INET,SOCK_STREAM,0))<0){
-		perror("otp_enc: socket"); FLUSH;
+		perror("otp_dec: socket"); FLUSH;
 		exit(1);
 	}
 	
 	if ((server=gethostbyname("localhost"))==NULL) {
-		fprintf(stderr,"otp_enc: ERROR, no such host\n");
+		fprintf(stderr,"otp_dec: ERROR, no such host\n");
         exit(1);
 	}
 	
@@ -164,30 +163,41 @@ int main(int argc, char* argv[]){
 	
 	/* Connect to server */
 	if(connect(clientSocket,(struct sockaddr*)&serverAddress,sizeof(serverAddress))<0){
-		fprintf(stderr,"Error: could not contact otp_enc_d on port %d\n",portno);FLUSH;
+		fprintf(stderr,"Error: could not contact otp_dec_d on port %d\n",portno);FLUSH;
 		exit(2);
 	}
-	char identity[]="otp_enc";	
+	char identity[]="otp_dec";	
 	sendData(clientSocket,identity,7); /* Send identity */
 	
-	receiveData(clientSocket,2,data);		
-	pLen = readFile(argv[1],plaintext);/* Open, read plaintext file, compute length*/	
+	receiveData(clientSocket,2,data); /* Receive ack or rej */		
+	if(strcmp(data,"NO")==0){ /* Rejected due to incorrect identity */
+		close(clientSocket);
+		exit(1);
+	}
+	cLen = readFile(argv[1],ciphertext);/* Open, read ciphertext file, compute length*/	
 	kLen = readFile(argv[2],key); /* Open, read key and compute length */
-	if(kLen<pLen){
+	if(kLen<cLen){
 		printf("Error: key '%s' is too short\n",argv[2]); FLUSH;
 		exit(1);
 	}
-	padWithLeadingZeros(pLen,tmp); 	/* Read the plaintext len into a buffer */
-	sendData(clientSocket,tmp,5);
+	padWithLeadingZeros(cLen,tmp); 	/* Read the ciphertext len into a buffer */
+	sendData(clientSocket,tmp,5); 	/* Send ciphertext len as string with leading zeroes */
 	receiveData(clientSocket,2,data); /* Receive acknowledgement */
-	sendData(clientSocket,plaintext,pLen); /* Send plaintext */
+	sendData(clientSocket,ciphertext,cLen); /* Send ciphertext */
 	receiveData(clientSocket,2,data); /* Receive acknowledgement */
 	padWithLeadingZeros(kLen,tmp); /* Read the key len into a buffer*/
 	sendData(clientSocket,tmp,5); /* Send length of keyfile */
 	receiveData(clientSocket,2,data); /* Receive acknowledgement */
-	sendData(clientSocket,key,kLen);
-	receiveData(clientSocket,pLen,data);
+	sendData(clientSocket,key,kLen); /* Send key */
+	receiveData(clientSocket,2,data); /* Receive acknowledgement */
+	sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
+	memset(data,'\0',sizeof(data));
+	receiveData(clientSocket,cLen,data); /* Receive plaintext */
 	printf("%s\n",data); //STDOUT the ciphertext
 	sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
+	receiveData(clientSocket,2,data); /* Receive acknowledgement */
+	if(close(clientSocket)<0){
+		perror("close"); FLUSH;
+	}	
 	return 0;
 }

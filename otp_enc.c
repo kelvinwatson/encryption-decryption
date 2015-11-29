@@ -164,12 +164,9 @@ int main(int argc, char* argv[]){
 		fprintf(stderr,"Error: could not contact otp_enc_d on port %d\n",portno);FLUSH;
 		exit(2);
 	}
+	
 	char identity[]="otp_enc";	
-	
-	//printf("CLIENT: send#1\n");
-	sendData(clientSocket,identity,7); /* Send identity */
-	
-	//printf("CLIENT: receive#1\n");
+	sendData(clientSocket,identity,7); /* Send identity */	
 	receiveData(clientSocket,2,data);		
 	if(strcmp(data,"NO")==0){ /* Rejected due to incorrect identity */
 		//printf("Received a no!");
@@ -178,7 +175,6 @@ int main(int argc, char* argv[]){
 	}
 
 	pLen = readFile(argv[1],plaintext);/* Open, read plaintext file, compute length*/	
-	//printf("CLIENT pLen=%d",pLen);
 	kLen = readFile(argv[2],key); /* Open, read key and compute length */
 	if(kLen<pLen){
 		printf("Error: key '%s' is too short\n",argv[2]); FLUSH;
@@ -186,47 +182,21 @@ int main(int argc, char* argv[]){
 	}
 	
 	padWithLeadingZeros(pLen,tmp); 	/* Read the plaintext len into a buffer */
-	//printf("CLIENT after padding, we get tmp=%s\n",tmp);
-	//printf("CLIENT: send#2\n");
 	sendData(clientSocket,tmp,5);
-	
-	//printf("CLIENT: receive#2\n");
 	receiveData(clientSocket,2,data); /* Receive acknowledgement */
-	
-	//printf("CLIENT: send#3\n");
 	sendData(clientSocket,plaintext,pLen); /* Send plaintext */
-
-	//printf("CLIENT: receive#3\n");
 	receiveData(clientSocket,2,data); /* Receive acknowledgement */
 	padWithLeadingZeros(kLen,tmp); /* Read the key len into a buffer*/
-	
-	//printf("CLIENT: send#4\n");
 	sendData(clientSocket,tmp,5); /* Send length of keyfile */
-
-	//printf("CLIENT: receive#4\n");
 	receiveData(clientSocket,2,data); /* Receive acknowledgement */
-
-	//printf("CLIENT: send#5\n");
 	sendData(clientSocket,key,kLen); /* Send key */
-
-	//printf("CLIENT: receive#5\n");
 	receiveData(clientSocket,2,data); /* Receive acknowledgement */
-	
-	//printf("CLIENT: send#6\n");
 	sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
 	memset(data,'\0',sizeof(data));
-
-	//printf("CLIENT: receiving CIPHERTEXT from SERVER, pLen=%d\n",pLen);
 	receiveData(clientSocket,pLen,data); /* Receive ciphertext */
 	printf("%s\n",data); //STDOUT the ciphertext
-	
-	//printf("CLIENT: sending last ACK to SERVER\n");
 	sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
-	
-	//printf("CLIENT: receiving last ACK from SERVER\n");
 	receiveData(clientSocket,2,data); /* Receive acknowledgement */
-	//printf("CLIENT GOT data=%s",data);
-	//printf("CLIENT: closing socket\n");
 	if(close(clientSocket)<0){
 		perror("close"); FLUSH;
 	}

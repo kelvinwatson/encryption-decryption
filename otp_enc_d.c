@@ -195,7 +195,6 @@ int main(int argc, char* argv[]){
 	}
 	/* Accept simultaneous connections */
 	while(1){ //accept loop
-		printf("SERVER: STILL RUNNING"); FLUSH;
 		if((clientSocket=accept(serverSocket,(struct sockaddr*)&clientAddress,&clientLen))<0){
 			perror("otp_enc_d: accept"); FLUSH;
 			continue;
@@ -207,8 +206,6 @@ int main(int argc, char* argv[]){
 		}
 		if(pid==0){ //child
 			close(serverSocket); //child does not need listener
-			
-			//printf("SERVER: receive#1\n");
 			receiveData(clientSocket,7,data); /* Recv all bytes of authentication, expect 7 bytes/chars in otp_enc*/
 			/* Authentication (verify that client is otp_enc) */
 			if(strcmp(data,"otp_enc") != 0){ //not the correct identity
@@ -216,57 +213,26 @@ int main(int argc, char* argv[]){
 				sendData(clientSocket,rejection,2); /* Send rejection */
 				exit(1);
 			} else{ //client identity confirmed
-				//printf("SERVER: send#1\n");
 				sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
-				
-				//printf("SERVER: receive#2\n");
 				receiveData(clientSocket,5,data); /* Receive length of plaintext for encryption */
-				//printf("SERVER: BEFORE REMOVE LEADING ZERO, data=%s",data);
 				removeLeadingZeroes(data); /* Strip leading zeros before conversion */
-				//printf("SERVER: AFTER AFTER LEADING ZERO, data=%s",data);				
 				int pLen = convertStringToInteger(data);	
-				//printf("\npLen=%d\n",pLen);
-				
-				//printf("SERVER: send#2\n");
 				sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
-				
-				//printf("SERVER: receive#3\n");
 				receiveData(clientSocket,pLen,data);
 				strcpy(plaintext,data);
-				
-				//printf("SERVER: send#3\n");
 				sendData(clientSocket,acknowledgement,2);
-				
-				//printf("SERVER: receive#4\n");
 				receiveData(clientSocket,5,data); /* Receive length of keyfile for encryption */				
 				removeLeadingZeroes(data); /* Strip leading zeros before conversion */
 				int kLen = convertStringToInteger(data);
-				
-				//printf("SERVER: send#4\n");
 				sendData(clientSocket,acknowledgement,2);
-				
-				//printf("SERVER: receive#5\n");
 				receiveData(clientSocket,kLen,data); /* Receive key */
 				strcpy(key,data); /* Store key */
-				//printf("SERVER: send#5\n");
 				sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
-				
-				//printf("SERVER: receive#6, plaintext=%s\n",plaintext);
 				receiveData(clientSocket,2,data); /* Receive acknowledgement */
 				encode(plaintext,key,pLen); /* Perform encryption */
-				
-				//printf("SERVER: sending %d chars of CIPHERTEXT",(int)(strlen(plaintext)));
-				//printf("SERVER: sending CIPHERTEXT = %s",plaintext);
 				sendData(clientSocket,plaintext,pLen); /* Send ciphertext to client */
-				
-				//printf("SERVER: receiving last ACK from CLIENT\n");
 				receiveData(clientSocket,2,data); /* Receive acknowledgement */
-				
-				//printf("SERVER: sending last ACK to CLIENT\n");
 				sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
-				
-				//sleep(1);
-				//printf("SERVER: ABOUT TO EXIT\n");
 				exit(0); //this child should send SIGCHLD to parent
 			}
 		}

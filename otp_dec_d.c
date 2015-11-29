@@ -227,7 +227,6 @@ int main(int argc, char* argv[]){
 				sendData(clientSocket,ciphertext,(int)(strlen(ciphertext))); /* Send plaintext to client */
 				receiveData(clientSocket,2,data); /* Receive acknowledgement */
 				sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
-				//sleep(1);
 				exit(0); //this child should send SIGCHLD to parent
 			}
 		}

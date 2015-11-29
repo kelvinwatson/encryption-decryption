@@ -1,6 +1,6 @@
 /* Programmed by Kelvin Watson
 * File name: otp_enc.c 
-* Created/Last modified: 24Nov15 / 27Nov15
+* Created/Last modified: 24Nov15 / 28Nov15
 * Description: Acts as a client, sending plaintext and a key to a server,
 * then receiving and outputting the encoded ciphertext
 * Sources/Citations: http://beej.us/guide/bgnet/output/html/multipage/advanced.html
@@ -43,6 +43,7 @@ int sendAll(int s, char *buf, int *len){
     return n==-1?-1:0; // return -1 on failure, 0 on success
 } 
 
+/* Calls the sendAll() method to send data in buffer */
 void sendData(int clientSocket, char* data, int length){
 	int len=length;
 	if(sendAll(clientSocket,data,&len) == -1){
@@ -71,7 +72,7 @@ int recvAll(int clientSocket, int size, char* data){
 	return n==-1?-1:0; // return -1 on failure, 0 on success
 }
 
-
+/* Calls the recvAll() method to receive data into buffer */
 void receiveData(int clientSocket, int size, char* data){
 	memset(data,'\0',sizeof(data));
 	if(recvAll(clientSocket,size,data) == -1){
@@ -79,6 +80,7 @@ void receiveData(int clientSocket, int size, char* data){
 	}
 }
 
+/* Opens a textfile and reads capital letters and spaces, removes the trailing newline */
 int readFile(char* file, char* buf){
 	int i;
 	char c;
@@ -102,7 +104,7 @@ int readFile(char* file, char* buf){
 	return (int)(strlen(buf));;
 }
 
-
+/* Pads a number of leading zeros up to five digits */
 void padWithLeadingZeros(int len,char* tmp){
 	char buf[MSG_SIZE] = {0};
 	sprintf(buf,"%05d",len); //pad w/ leading 0's and convert to str
@@ -117,6 +119,7 @@ void padWithLeadingZeros(int len,char* tmp){
 	} 
 }
 
+/* Main function */
 int main(int argc, char* argv[]){
 	/* Define variables */
 
@@ -128,11 +131,13 @@ int main(int argc, char* argv[]){
 	char acknowledgement[] = "OK";
 	char tmp[5] = {'0'};
 		
+	/* Valid command line arguments */
 	if(argc != 4){ //incorrect number of arguments
 		fprintf(stderr,"Usage: otp_enc plaintext key port\n");
 		exit(1);
 	}
 
+	/* Convert port number from string to integer */
 	errno=0;
 	portno = strtol(argv[3],&endptr,10);
 	if ((errno == ERANGE && (portno == LONG_MAX || portno == LONG_MIN)) || (errno != 0 && portno == 0)) {
@@ -143,11 +148,13 @@ int main(int argc, char* argv[]){
 		exit(1); 
 	}
 	
+	/* Create client socket */
 	if((clientSocket = socket(AF_INET,SOCK_STREAM,0))<0){
 		perror("otp_enc: socket"); FLUSH;
 		exit(1);
 	}
 
+	/* Retrieve server information */
 	if ((server=gethostbyname("localhost"))==NULL) {
 		fprintf(stderr,"otp_enc: ERROR, no such host\n");
         exit(1);
@@ -165,8 +172,11 @@ int main(int argc, char* argv[]){
 		exit(2);
 	}
 	
+	/* Send identity otp_dec to otp_dec_d for validation */
 	char identity[]="otp_enc";	
 	sendData(clientSocket,identity,7); /* Send identity */	
+	
+	/* Receive acknowledgement or rejection of identity */
 	receiveData(clientSocket,2,data);		
 	if(strcmp(data,"NO")==0){ /* Rejected due to incorrect identity */
 		//printf("Received a no!");
@@ -174,15 +184,19 @@ int main(int argc, char* argv[]){
 		exit(1);
 	}
 
+	/* Read plaintext and key files into buffers */
 	pLen = readFile(argv[1],plaintext);/* Open, read plaintext file, compute length*/	
 	kLen = readFile(argv[2],key); /* Open, read key and compute length */
+	
+	/* Ensure key is long enough */
 	if(kLen<pLen){
 		printf("Error: key '%s' is too short\n",argv[2]); FLUSH;
 		exit(1);
 	}
 	
-	padWithLeadingZeros(pLen,tmp); 	/* Read the plaintext len into a buffer */
-	sendData(clientSocket,tmp,5);
+	/* Send and receive data to and from otp_enc_d */
+	padWithLeadingZeros(pLen,tmp); 	/* Read plaintext length to buffer, pad w/leading zeros*/
+	sendData(clientSocket,tmp,5); /* Send padded length */
 	receiveData(clientSocket,2,data); /* Receive acknowledgement */
 	sendData(clientSocket,plaintext,pLen); /* Send plaintext */
 	receiveData(clientSocket,2,data); /* Receive acknowledgement */
@@ -192,12 +206,12 @@ int main(int argc, char* argv[]){
 	sendData(clientSocket,key,kLen); /* Send key */
 	receiveData(clientSocket,2,data); /* Receive acknowledgement */
 	sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
-	memset(data,'\0',sizeof(data));
+	memset(data,'\0',sizeof(data)); /* Clear data buffer */
 	receiveData(clientSocket,pLen,data); /* Receive ciphertext */
 	printf("%s\n",data); //STDOUT the ciphertext
 	sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
 	receiveData(clientSocket,2,data); /* Receive acknowledgement */
-	if(close(clientSocket)<0){
+	if(close(clientSocket)<0){ /* Close socket */
 		perror("close"); FLUSH;
 	}
 	

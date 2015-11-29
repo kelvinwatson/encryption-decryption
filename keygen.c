@@ -1,7 +1,7 @@
 /* Programmed by Kelvin Watson
 * File name: keygen.c 
-* Created/Last modified: 24Nov15 / 27Nov15
-* Description: Generates a key 
+* Created/Last modified: 24Nov15 / 28Nov15
+* Description: Generates a key of a specified length 
 * Usage: keygen keylength or keygen keylength > file
 * Sources/Citations: http://beej.us/guide/bgnet/output/html/multipage/advanced.html
 */

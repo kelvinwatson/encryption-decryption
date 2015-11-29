@@ -1,6 +1,6 @@
 /* Programmed by Kelvin Watson
 * File name: otp_enc_d.c 
-* Created/Last modified: 24Nov15 / 26Nov15
+* Created/Last modified: 24Nov15 / 28Nov15
 * Description: Acts as a server, receiving data and encoding it to ciphertext
 * Sources/Citations: http://beej.us/guide/bgnet/output/html/singlepage/bgnet.html#socket
 * http://beej.us/guide/bgnet/output/html/multipage/advanced.html
@@ -25,7 +25,6 @@
 
 /* Encodes plaintext to ciphertext based on key */
 void encode(char* msg, char* key, int len){
-	//printf("encoding msg=%s\n",msg);
 	int i,k,m,r;	
 	for(i=0; i<len; i++){
 		m=(int)msg[i]; // Reduce letter from ASCII int to 0-26 for manipulation*/
@@ -37,13 +36,11 @@ void encode(char* msg, char* key, int len){
 		r = (r==26)? 32 : (r+65);
 		msg[i]=(char)r;
 	}
-	//printf("SERVER: done encoding! msg=%s\n",msg);
 }
 
 
 /* Handles SIGCHLD signals */
 void sigchld_handler(int s){
-	//printf("SIGCHLD HANDLER\n");
 	int saved_errno = errno;
 	while(waitpid(-1, NULL, WNOHANG) > 0);
 	errno = saved_errno;
@@ -70,6 +67,7 @@ int recvAll(int clientSocket, int size, char* data){
 	return n==-1?-1:0; // return -1 on failure, 0 on success
 }
 
+/* Calls the recvAll() method to receive data into buffer */
 void receiveData(int clientSocket, int size, char* data){
 	memset(data,'\0',sizeof(data));
 	if(recvAll(clientSocket,size,data) == -1){
@@ -93,6 +91,7 @@ int sendAll(int s, char *buf, int *len){
     return n==-1?-1:0; // return -1 on failure, 0 on success
 } 
 
+/* Calls the sendAll() method to send data in buffer */
 void sendData(int clientSocket, char* data, int length){
 	int len=length;
 	if(sendAll(clientSocket,data,&len) == -1){
@@ -101,6 +100,7 @@ void sendData(int clientSocket, char* data, int length){
 	
 }
 
+/* Removes leading zeros from data in buffer */
 void removeLeadingZeroes(char* data){
 	//printf("SERVER: In removeLeading() BEFORE REMOVE :data=%s\n",data);
 	char tmp[5]={0};
@@ -117,6 +117,7 @@ void removeLeadingZeroes(char* data){
 	strcpy(data,tmp);
 }
 
+/* Convert string representation of number to int representation */
 int convertStringToInteger(char* data){
 	errno=0;
 	char *endptr;
@@ -128,6 +129,7 @@ int convertStringToInteger(char* data){
 	return len;
 }
 
+/* Main function */
 int main(int argc, char* argv[]){
 	/* Define variables*/
 	int serverSocket, clientSocket, portno, numClientsConnected=0;
@@ -146,6 +148,7 @@ int main(int argc, char* argv[]){
 		exit(1);
 	}
 	
+	/* Retrieve server socket */
 	if((serverSocket = socket(AF_INET,SOCK_STREAM,0))<0){
 		perror("otp_enc_d socket");
 		exit(1);
@@ -186,13 +189,14 @@ int main(int argc, char* argv[]){
 	clientLen=sizeof(clientAddress);
 	
 	/* Set up signal handler for SIGCHLD signals */
-	sa.sa_handler=sigchld_handler; // reap all dead processes
+	sa.sa_handler=sigchld_handler; // reap all completed processes
 	sigemptyset(&sa.sa_mask);
 	sa.sa_flags=SA_RESTART;
 	if (sigaction(SIGCHLD,&sa,NULL)==-1) {
 		perror("sigaction");
 		exit(1);
 	}
+	
 	/* Accept simultaneous connections */
 	while(1){ //accept loop
 		if((clientSocket=accept(serverSocket,(struct sockaddr*)&clientAddress,&clientLen))<0){
@@ -213,18 +217,19 @@ int main(int argc, char* argv[]){
 				sendData(clientSocket,rejection,2); /* Send rejection */
 				exit(1);
 			} else{ //client identity confirmed
+				/* Send and receive data from otp_enc */
 				sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
 				receiveData(clientSocket,5,data); /* Receive length of plaintext for encryption */
 				removeLeadingZeroes(data); /* Strip leading zeros before conversion */
-				int pLen = convertStringToInteger(data);	
+				int pLen = convertStringToInteger(data);	/* Convert plaintext length to int */	
 				sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
-				receiveData(clientSocket,pLen,data);
-				strcpy(plaintext,data);
-				sendData(clientSocket,acknowledgement,2);
+				receiveData(clientSocket,pLen,data); /* Receive plaintext */
+				strcpy(plaintext,data); /* Store plaintext */
+				sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
 				receiveData(clientSocket,5,data); /* Receive length of keyfile for encryption */				
 				removeLeadingZeroes(data); /* Strip leading zeros before conversion */
-				int kLen = convertStringToInteger(data);
-				sendData(clientSocket,acknowledgement,2);
+				int kLen = convertStringToInteger(data); /* Convert key length to int */
+				sendData(clientSocket,acknowledgement,2); /* Send acknowledgement*/
 				receiveData(clientSocket,kLen,data); /* Receive key */
 				strcpy(key,data); /* Store key */
 				sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */

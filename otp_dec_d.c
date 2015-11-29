@@ -40,7 +40,6 @@ void decode(char* msg, char* key, int len){
 
 /* Handles SIGCHLD signals */
 void sigchld_handler(int s){
-	//printf("SIGCHLD HANDLER\n");
 	int saved_errno = errno;
 	while(waitpid(-1, NULL, WNOHANG) > 0);
 	errno = saved_errno;
@@ -64,6 +63,7 @@ int recvAll(int clientSocket, int size, char* data){
 	return n==-1?-1:0; // return -1 on failure, 0 on success
 }
 
+/* Calls the recvAll() method to receive data into buffer */
 void receiveData(int clientSocket, int size, char* data){
 	memset(data,'\0',sizeof(data));
 	if(recvAll(clientSocket,size,data) == -1){
@@ -86,6 +86,7 @@ int sendAll(int s, char *buf, int *len){
     return n==-1?-1:0; // return -1 on failure, 0 on success
 } 
 
+/* Calls the sendAll() method to send data in buffer */
 void sendData(int clientSocket, char* data, int length){
 	int len=length;
 	if(sendAll(clientSocket,data,&len) == -1){
@@ -94,8 +95,8 @@ void sendData(int clientSocket, char* data, int length){
 	
 }
 
+/* Removes leading zeros from data in buffer */
 void removeLeadingZeroes(char* data){
-	//printf("SERVER: In removeLeading() BEFORE REMOVE :data=%s\n",data);
 	char tmp[5]={0};
 	int i=0, j=0;
 	for(i=0; i<((int)(strlen(data))); i++){
@@ -111,6 +112,7 @@ void removeLeadingZeroes(char* data){
 	//printf("SERVER after remove data=%s\n",data); FLUSH;
 }
 
+/* Convert string representation of number to int representation */
 int convertStringToInteger(char* data){
 	errno=0;
 	char *endptr;
@@ -122,6 +124,7 @@ int convertStringToInteger(char* data){
 	return len;
 }
 
+/* Main function */
 int main(int argc, char* argv[]){
 	/* Define variables*/
 	int serverSocket, clientSocket, portno, len, numClientsConnected=0;
@@ -140,6 +143,7 @@ int main(int argc, char* argv[]){
 		exit(1);
 	}
 	
+	/* Retrieve server socket */
 	if((serverSocket = socket(AF_INET,SOCK_STREAM,0))<0){
 		perror("otp_dec_d socket");
 		exit(1);
@@ -180,13 +184,14 @@ int main(int argc, char* argv[]){
 	clientLen=sizeof(clientAddress);
 	
 	/* Set up signal handler for SIGCHLD signals */
-	sa.sa_handler=sigchld_handler; // reap all dead processes
+	sa.sa_handler=sigchld_handler; // reap all completed processes
 	sigemptyset(&sa.sa_mask);
 	sa.sa_flags=SA_RESTART;
 	if (sigaction(SIGCHLD,&sa,NULL)==-1) {
 		perror("sigaction");
 		exit(1);
 	}
+	
 	/* Accept simultaneous connections */
 	while(1){ //accept loop
 		if((clientSocket=accept(serverSocket,(struct sockaddr*)&clientAddress,&clientLen))<0){
@@ -207,18 +212,19 @@ int main(int argc, char* argv[]){
 				sendData(clientSocket,rejection,2); /* Send rejection */
 				exit(1);
 			} else{ //client identity confirmed
+				/* Send and receive data from otp_dec */
 				sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
 				receiveData(clientSocket,5,data); /* Receive length of ciphertext for encryption */
 				removeLeadingZeroes(data); /* Strip leading zeros before conversion */
-				len = convertStringToInteger(data);				
+				len = convertStringToInteger(data);	/* Convert ciphertext length to int */		
 				sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
 				receiveData(clientSocket,len,data); /* Receive ciphertext */
 				strcpy(ciphertext,data);	/* Store ciphertext */
-				sendData(clientSocket,acknowledgement,2);
+				sendData(clientSocket,acknowledgement,2); /* Send acknowledgement*/
 				receiveData(clientSocket,5,data); /* Receive length of keyfile for decryption */				
 				removeLeadingZeroes(data); /* Strip leading zeros before conversion */
-				len = convertStringToInteger(data);
-				sendData(clientSocket,acknowledgement,2);
+				len = convertStringToInteger(data); /* Convert key length to int */
+				sendData(clientSocket,acknowledgement,2); /* Send acknowledgement*/
 				receiveData(clientSocket,len,data); /* Receive key */
 				strcpy(key,data); /* Store key */
 				sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
@@ -227,7 +233,7 @@ int main(int argc, char* argv[]){
 				sendData(clientSocket,ciphertext,(int)(strlen(ciphertext))); /* Send plaintext to client */
 				receiveData(clientSocket,2,data); /* Receive acknowledgement */
 				sendData(clientSocket,acknowledgement,2); /* Send acknowledgement */
-				exit(0); //this child should send SIGCHLD to parent
+				exit(0); //this child process sends SIGCHLD to parent
 			}
 		}
 		else{ //parent
